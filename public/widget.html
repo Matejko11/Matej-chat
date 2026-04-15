@@ -25,8 +25,10 @@ p{color:#666;font-size:15px;margin-bottom:40px}
 .msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f8f9ff}
 .msg{max-width:80%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.5}
 .msg.bot{background:#fff;border:1px solid #e8eaf6;align-self:flex-start;color:#333;border-bottom-left-radius:4px}
+.msg.bot a{color:#4f7cff;text-decoration:underline}
 .msg.user{background:linear-gradient(135deg,#ffdd00,#f0c800);color:#3d3d3d;align-self:flex-end;border-bottom-right-radius:4px}
 .msg.typing{background:#fff;border:1px solid #e8eaf6;align-self:flex-start;color:#999;font-style:italic}
+.msg img{max-width:100%;border-radius:8px;margin-top:4px;display:block}
 .ir{padding:12px 14px;background:#fff;border-top:1px solid #eee;display:flex;gap:8px}
 .ir input{flex:1;border:1px solid #dde;border-radius:22px;padding:10px 16px;font-size:14px;outline:none;font-family:system-ui}
 .ir input:focus{border-color:#ffdd00}
@@ -119,7 +121,17 @@ async function startChat(){
 
 function addMsg(role,text){
   const el=document.createElement('div');
-  el.className='msg '+role;el.textContent=text;
+  el.className='msg '+role;
+  // Klikateľné linky + obrázky
+  const isImg=/^https?:\/\/\S+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i;
+  if(role==='bot'&&isImg.test(text.trim())){
+    const img=document.createElement('img');
+    img.src=text.trim();
+    img.alt='';
+    el.appendChild(img);
+  } else {
+    el.innerHTML=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/https?:\/\/[^\s<]+/g,url=>`<a href="${url}" target="_blank" style="color:inherit;text-decoration:underline;word-break:break-all;">${url}</a>`);
+  }
   const c=document.getElementById('msgs');c.appendChild(el);c.scrollTop=c.scrollHeight;
   return el;
 }
