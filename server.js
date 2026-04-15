@@ -73,7 +73,7 @@ async function translateText(text, targetLang) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 400,
-        messages: [{ role: 'user', content: `Preložte nasledujúci text do ${langName}. Vráťte IBA preložený text, bez vysvetlení:\n\n${text}` }]
+        messages: [{ role: 'user', content: 'Prelozte nasledujuci text do ' + langName + '. Vraťte IBA prelozeny text:\n\n' + text }]
       })
     });
     const data = await response.json();
@@ -91,7 +91,7 @@ async function translateToSK(text, fromLang) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 300,
-        messages: [{ role: 'user', content: `Preložte nasledujúci text do slovenčiny. Vráťte IBA preložený text:\n\n${text}` }]
+        messages: [{ role: 'user', content: 'Prelozte nasledujuci text do slovenciny. Vraťte IBA prelozeny text:\n\n' + text }]
       })
     });
     const data = await response.json();
@@ -102,7 +102,7 @@ async function translateToSK(text, fromLang) {
 // Vygenerovať návrh odpovede od Davida (vždy po slovensky)
 async function generateDraft(session) {
   const prompt = loadPrompt();
-  const systemMsg = `${prompt}\n\n---\nVAŽNÉ: Odpovedaj VŽDY po SLOVENSKY, bez ohľadu na jazyk zákazníka. Tvoja odpoveď bude preložená do jazyka zákazníka automaticky.\n\nAktuálny zákazník: ${session.name || 'neznámy'}, stránka: ${session.site}`;
+  const systemMsg = prompt + '\n\n---\nDOLEZITE: Odpovedaj VZDY po SLOVENSKY. Tvoja odpoved bude prelozena do jazyka zakaznika automaticky.\n\nAktualny zakaznik: ' + (session.name || 'neznamy') + ', stranka: ' + session.site;
   
   const messages = session.messages.map(m => ({
     role: m.role === 'customer' ? 'user' : 'assistant',
@@ -126,7 +126,7 @@ async function generateDraft(session) {
 app.post('/api/start', async (req, res) => {
   const { name, email, sessionId } = req.body;
   const { site, lang } = detectSite(req);
-  const sid = sessionId || `s_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const sid = sessionId || ('s_' + Date.now() + '_' + Math.random().toString(36).slice(2,7));
   
   sessions[sid] = { id: sid, name: name || 'Zákazník', email: email || '', site, lang, messages: [], status: 'waiting', aiDraft: null, createdAt: Date.now(), lastActivity: Date.now(), waitingSent: false };
   
@@ -231,7 +231,7 @@ app.get('/admin/prompt', adminAuth, (req, res) => res.json({ prompt: loadPrompt(
 app.post('/admin/prompt', adminAuth, (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: 'Chýba prompt' });
-  const backup = path.join(__dirname, 'data', `prompt_${Date.now()}.md`);
+  const backup = path.join(__dirname, 'data', 'prompt_' + Date.now() + '.md');
   fs.copyFileSync(PROMPT_FILE, backup);
   fs.writeFileSync(PROMPT_FILE, prompt, 'utf-8');
   res.json({ ok: true });
@@ -330,6 +330,6 @@ wss.on('connection', (ws, req) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`David LiveChat beží na http://localhost:${PORT}`);
-  console.log(`Admin: http://localhost:${PORT}/admin.html`);
+  console.log('David LiveChat bezi na porte: ' + PORT);
+  console.log('Admin ready');
 });
