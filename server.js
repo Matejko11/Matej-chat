@@ -30,16 +30,20 @@ if (!fs.existsSync(SHORTCUTS_FILE)) {
   ], null, 2));
 }
 
-// Aktivne sessions: sessionId -> { id, name, email, site, lang, messages, status, aiDraft, createdAt, lastActivity }
 const sessions = {};
-// WebSocket admins
 const adminClients = new Set();
 
 function loadConfig() { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); }
 function loadPrompt() { return fs.readFileSync(PROMPT_FILE, 'utf-8'); }
 
-function detectSite(req) {
+// OPRAVA: detectSite teraz berie aj body (lang z widgetu)
+function detectSite(req, body) {
   const origin = req.headers.origin || req.headers.referer || '';
+  // Najprv skús lang z body (poslaný z widgetu cez ?lang=HU)
+  if (body && body.lang === 'HU') return { site: 'runnie.hu', lang: 'HU' };
+  if (body && body.lang === 'CZ') return { site: 'runnie.cz', lang: 'CZ' };
+  if (body && body.lang === 'SK') return { site: 'bezeckepotreby.sk', lang: 'SK' };
+  // Fallback: podľa origin/referer hlavičky
   if (origin.includes('runnie.cz')) return { site: 'runnie.cz', lang: 'CZ' };
   if (origin.includes('runnie.hu')) return { site: 'runnie.hu', lang: 'HU' };
   return { site: 'bezeckepotreby.sk', lang: 'SK' };
@@ -55,14 +59,12 @@ function saveConversation(session, role, text) {
   fs.appendFileSync(CONV_FILE, JSON.stringify(entry) + '\n');
 }
 
-// Preklady čakacia hláška
 const waitingMessages = {
   SK: 'Prosíme o trpezlivosť, všetci naši operátori sú vyťažení. Ak nemôžete dlhšie čakať, napíšte nám váš e-mail a my sa vám ozveme. Ďakujeme za pochopenie.',
   CZ: 'Prosíme o trpělivost, všichni naši operátoři jsou momentálně zaneprázdněni. Pokud nemůžete déle čekat, napište nám svůj e-mail a my se vám ozveme. Děkujeme za pochopení.',
   HU: 'Kérjük türelmét, operátoraink jelenleg foglaltak. Ha nem tud tovább várni, kérjük, adja meg e-mail címét és hamarosan felvesszük Önnel a kapcsolatot. Köszönjük megértését.'
 };
 
-// Preložiť text pomocou Claude
 async function translateText(text, targetLang) {
   if (targetLang === 'SK') return text;
   const langName = { CZ: 'spisovnú češtinu', HU: 'spisovnú maďarčinu' }[targetLang];
@@ -81,7 +83,6 @@ async function translateText(text, targetLang) {
   } catch { return text; }
 }
 
-// Preložiť správu zákazníka do slovenčiny
 async function translateToSK(text, fromLang) {
   if (fromLang === 'SK') return text;
   try {
@@ -99,7 +100,6 @@ async function translateToSK(text, fromLang) {
   } catch { return text; }
 }
 
-// Vygenerovať návrh odpovede od Davida (vždy po slovensky)
 async function generateDraft(session) {
   const prompt = loadPrompt();
   const systemMsg = prompt + '\n\n---\nDOLEZITE: Odpovedaj VZDY po SLOVENSKY. Tvoja odpoved bude prelozena do jazyka zakaznika automaticky.\n\nAktualny zakaznik: ' + (session.name || 'neznamy') + ', stranka: ' + session.site;
@@ -122,18 +122,16 @@ async function generateDraft(session) {
 
 // ── CUSTOMER API ──────────────────────────────────────────────────────────────
 
-// Zákazník začne chat
+// OPRAVA: detectSite dostáva aj req.body
 app.post('/api/start', async (req, res) => {
   const { name, email, sessionId } = req.body;
-  const { site, lang } = detectSite(req);
+  const { site, lang } = detectSite(req, req.body);
   const sid = sessionId || ('s_' + Date.now() + '_' + Math.random().toString(36).slice(2,7));
   
   sessions[sid] = { id: sid, name: name || 'Zákazník', email: email || '', site, lang, messages: [], status: 'waiting', aiDraft: null, createdAt: Date.now(), lastActivity: Date.now(), waitingSent: false };
   
-  // Upozorni adminov
   broadcastToAdmins({ type: 'new_session', session: { id: sid, name: sessions[sid].name, email: sessions[sid].email, site, lang, status: 'waiting', createdAt: sessions[sid].createdAt, messages: [] } });
   
-  // Po 3 minútach pošli čakaciu hlášku ak admin neodpovedal
   setTimeout(() => {
     const s = sessions[sid];
     if (s && s.status === 'waiting' && !s.waitingSent) {
@@ -146,7 +144,6 @@ app.post('/api/start', async (req, res) => {
   res.json({ ok: true, sessionId: sid });
 });
 
-// Zákazník pošle správu
 app.post('/api/message', async (req, res) => {
   const { sessionId, text } = req.body;
   const session = sessions[sessionId];
@@ -154,25 +151,21 @@ app.post('/api/message', async (req, res) => {
 
   session.lastActivity = Date.now();
 
-  // Preložiť správu zákazníka do SK
   const textSK = await translateToSK(text, session.lang);
   
   const msg = { role: 'customer', text, textSK, timestamp: Date.now() };
   session.messages.push(msg);
   saveConversation(session, 'user', text);
 
-  // Vygenerovať návrh od Davida
   const draft = await generateDraft(session);
   session.aiDraft = draft;
   session.status = 'pending';
 
-  // Notifikuj adminov
   broadcastToAdmins({ type: 'customer_message', sessionId, message: msg, aiDraft: draft, name: session.name, site: session.site, lang: session.lang });
 
   res.json({ ok: true });
 });
 
-// Zákazník pýta aktualizáciu (polling)
 app.get('/api/poll/:sessionId', (req, res) => {
   const session = sessions[req.params.sessionId];
   if (!session) return res.json({ messages: [] });
@@ -201,19 +194,16 @@ function adminAuth(req, res, next) {
   else res.status(401).json({ error: 'Neautorizovaný' });
 }
 
-// Aktívne sessions
 app.get('/admin/sessions', adminAuth, (req, res) => {
   const list = Object.values(sessions).sort((a, b) => b.lastActivity - a.lastActivity);
   res.json({ sessions: list });
 });
 
-// Admin odošle odpoveď zákazníkovi
 app.post('/admin/reply', adminAuth, async (req, res) => {
   const { sessionId, textSK } = req.body;
   const session = sessions[sessionId];
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  // Preložiť odpoveď do jazyka zákazníka
   const textTranslated = await translateText(textSK, session.lang);
   
   const msg = { role: 'operator', text: textTranslated, textSK, timestamp: Date.now(), delivered: false };
@@ -226,7 +216,6 @@ app.post('/admin/reply', adminAuth, async (req, res) => {
   res.json({ ok: true, textTranslated });
 });
 
-// Prompt
 app.get('/admin/prompt', adminAuth, (req, res) => res.json({ prompt: loadPrompt() }));
 app.post('/admin/prompt', adminAuth, (req, res) => {
   const { prompt } = req.body;
@@ -237,7 +226,6 @@ app.post('/admin/prompt', adminAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// Zmena hesla
 app.post('/admin/change-password', adminAuth, (req, res) => {
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Príliš krátke heslo' });
@@ -247,7 +235,6 @@ app.post('/admin/change-password', adminAuth, (req, res) => {
   res.json({ ok: true, newToken: Buffer.from(newPassword).toString('base64') });
 });
 
-// Skratky
 app.get('/admin/shortcuts', adminAuth, (req, res) => {
   const s = JSON.parse(fs.readFileSync(SHORTCUTS_FILE, 'utf-8'));
   res.json({ shortcuts: s });
@@ -259,7 +246,6 @@ app.post('/admin/shortcuts', adminAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// Hodnotenia
 app.post('/api/rating', (req, res) => {
   const { sessionId, rating } = req.body;
   const session = sessions[sessionId] || {};
