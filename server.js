@@ -22,28 +22,59 @@ if (!fs.existsSync(path.join(__dirname, 'public'))) fs.mkdirSync(path.join(__dir
 if (!fs.existsSync(SHORTCUTS_FILE)) {
   fs.writeFileSync(SHORTCUTS_FILE, JSON.stringify([
     { id: 1, label: 'Doprava', text: 'Doručenie je zadarmo nad 70€. Kuriér SPS doručí nasledujúci pracovný deň pri objednávke do 14:00.' },
-    { id: 2, label: 'Vrátenie', text: 'Máte 30 dní na vrátenie. Vybavíme cez Packetu, bez tlačenia štítkov.' },
+    { id: 2, label: 'Vrátenie', text: 'Máš 30 dní na vrátenie. Vybavíme cez Packetu, bez tlačenia štítkov. Presný postup nájdeš tu: https://www.bezeckepotreby.sk/stranka/vratenie-tovaru-do-30-dni' },
     { id: 3, label: 'Veľkosť', text: 'Odporúčame objednať o 0,5 väčšiu ako bežne nosíte. Ak máte širšie chodidlo, zvoľte 1 číslo navyše.' },
     { id: 4, label: 'Sklad', text: 'Dostupnosť tovaru prosím overte na tel. 0948 535 530 alebo emailom info@bezeckepotreby.sk.' },
-    { id: 5, label: 'Reklamácia', text: 'Reklamáciu zašlite ako balík na: AIRE s.r.o., Cesta na štadión 7, 974 04 Banská Bystrica. Priložte kópiu faktúry a popis závady.' },
-    { id: 6, label: 'Výmena', text: 'Prvá výmena bežeckej obuvi je bezplatná. Napíšte na info@bezeckepotreby.sk akú veľkosť potrebujete.' }
+    { id: 5, label: 'Reklamácia', text: 'Ako správne odoslať tovar na reklamáciu? Všetky info nájdeš tu: https://www.bezeckepotreby.sk/stranka/reklamacie/' },
+    { id: 6, label: 'Výmena', text: 'Pri prvej výmene bežeckej obuvi máš u nás dopravu späť úplne ZDARMA. Viac info tu: https://www.bezeckepotreby.sk/vymena' }
   ], null, 2));
 }
 
 const sessions = {};
 const adminClients = new Set();
 
+// Online/Offline stav: 'auto', 'online', 'offline'
+let onlineStatus = 'auto';
+
 function loadConfig() { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); }
 function loadPrompt() { return fs.readFileSync(PROMPT_FILE, 'utf-8'); }
 
-// OPRAVA: detectSite teraz berie aj body (lang z widgetu)
+function isDST(date) {
+  const jan = new Date(date.getFullYear(), 0, 1);
+  const jul = new Date(date.getFullYear(), 6, 1);
+  return date.getTimezoneOffset() < Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+}
+
+function isWorkingHours() {
+  const now = new Date();
+  const offset = isDST(now) ? 2 : 1;
+  const sk = new Date(now.getTime() + offset * 60 * 60 * 1000);
+  const day = sk.getUTCDay();
+  const hour = sk.getUTCHours();
+  const min = sk.getUTCMinutes();
+  const time = hour * 60 + min;
+  if (day >= 1 && day <= 5) return time >= 9 * 60 + 30 && time < 16 * 60 + 30;
+  if (day === 6) return time >= 9 * 60 && time < 12 * 60;
+  return false;
+}
+
+function isOnline() {
+  if (onlineStatus === 'online') return true;
+  if (onlineStatus === 'offline') return false;
+  return isWorkingHours();
+}
+
+const offlineMessages = {
+  SK: 'Ahoj! Momentálne sme offline. Pracujeme Po–Pia 9:30–16:30 a So 9:00–12:00. Zanechaj nám svoj email a hneď ako budeme online, ozveme sa ti. 🙂',
+  CZ: 'Ahoj! Momentálně jsme offline. Pracujeme Po–Pá 9:30–16:30 a So 9:00–12:00. Zanech nám svůj email a jakmile budeme online, ozveme se ti. 🙂',
+  HU: 'Szia! Jelenleg offline vagyunk. Munkaidőnk: H–P 9:30–16:30 és Szo 9:00–12:00. Hagyd meg az email címed és amint online leszünk, jelentkezünk. 🙂'
+};
+
 function detectSite(req, body) {
   const origin = req.headers.origin || req.headers.referer || '';
-  // Najprv skús lang z body (poslaný z widgetu cez ?lang=HU)
   if (body && body.lang === 'HU') return { site: 'runnie.hu', lang: 'HU' };
   if (body && body.lang === 'CZ') return { site: 'runnie.cz', lang: 'CZ' };
   if (body && body.lang === 'SK') return { site: 'bezeckepotreby.sk', lang: 'SK' };
-  // Fallback: podľa origin/referer hlavičky
   if (origin.includes('runnie.cz')) return { site: 'runnie.cz', lang: 'CZ' };
   if (origin.includes('runnie.hu')) return { site: 'runnie.hu', lang: 'HU' };
   return { site: 'bezeckepotreby.sk', lang: 'SK' };
@@ -72,11 +103,7 @@ async function translateText(text, targetLang) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 400,
-        messages: [{ role: 'user', content: 'Prelozte nasledujuci text do ' + langName + '. Vraťte IBA prelozeny text:\n\n' + text }]
-      })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: 'Prelozte nasledujuci text do ' + langName + '. Vraťte IBA prelozeny text:\n\n' + text }] })
     });
     const data = await response.json();
     return data.content?.[0]?.text || text;
@@ -89,11 +116,7 @@ async function translateToSK(text, fromLang) {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: 'Prelozte nasledujuci text do slovenciny. Vraťte IBA prelozeny text:\n\n' + text }]
-      })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: 'Prelozte nasledujuci text do slovenciny. Vraťte IBA prelozeny text:\n\n' + text }] })
     });
     const data = await response.json();
     return data.content?.[0]?.text || text;
@@ -103,12 +126,7 @@ async function translateToSK(text, fromLang) {
 async function generateDraft(session) {
   const prompt = loadPrompt();
   const systemMsg = prompt + '\n\n---\nDOLEZITE: Odpovedaj VZDY po SLOVENSKY. Tvoja odpoved bude prelozena do jazyka zakaznika automaticky.\n\nAktualny zakaznik: ' + (session.name || 'neznamy') + ', stranka: ' + session.site;
-  
-  const messages = session.messages.map(m => ({
-    role: m.role === 'customer' ? 'user' : 'assistant',
-    content: m.textSK || m.text
-  }));
-
+  const messages = session.messages.map(m => ({ role: m.role === 'customer' ? 'user' : 'assistant', content: m.textSK || m.text }));
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -122,26 +140,32 @@ async function generateDraft(session) {
 
 // ── CUSTOMER API ──────────────────────────────────────────────────────────────
 
-// OPRAVA: detectSite dostáva aj req.body
 app.post('/api/start', async (req, res) => {
   const { name, email, sessionId } = req.body;
   const { site, lang } = detectSite(req, req.body);
   const sid = sessionId || ('s_' + Date.now() + '_' + Math.random().toString(36).slice(2,7));
-  
+  const online = isOnline();
+
   sessions[sid] = { id: sid, name: name || 'Zákazník', email: email || '', site, lang, messages: [], status: 'waiting', aiDraft: null, createdAt: Date.now(), lastActivity: Date.now(), waitingSent: false };
-  
+
+  if (!online) {
+    const offMsg = offlineMessages[lang] || offlineMessages.SK;
+    sessions[sid].messages.push({ role: 'operator', text: offMsg, textSK: 'Automatická offline správa', timestamp: Date.now(), delivered: false });
+    saveConversation(sessions[sid], 'assistant', offMsg);
+  }
+
   broadcastToAdmins({ type: 'new_session', session: { id: sid, name: sessions[sid].name, email: sessions[sid].email, site, lang, status: 'waiting', createdAt: sessions[sid].createdAt, messages: [] } });
-  
+
   setTimeout(() => {
     const s = sessions[sid];
-    if (s && s.status === 'waiting' && !s.waitingSent) {
+    if (s && s.status === 'waiting' && !s.waitingSent && isOnline()) {
       s.waitingSent = true;
       const waitMsg = waitingMessages[s.lang] || waitingMessages.SK;
       broadcastToAdmins({ type: 'send_to_customer', sessionId: sid, text: waitMsg, textSK: 'Automatická správa: operátori sú vyťažení' });
     }
   }, 3 * 60 * 1000);
 
-  res.json({ ok: true, sessionId: sid });
+  res.json({ ok: true, sessionId: sid, online });
 });
 
 app.post('/api/message', async (req, res) => {
@@ -150,28 +174,34 @@ app.post('/api/message', async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
   session.lastActivity = Date.now();
-
   const textSK = await translateToSK(text, session.lang);
-  
   const msg = { role: 'customer', text, textSK, timestamp: Date.now() };
   session.messages.push(msg);
   saveConversation(session, 'user', text);
 
-  const draft = await generateDraft(session);
-  session.aiDraft = draft;
-  session.status = 'pending';
-
-  broadcastToAdmins({ type: 'customer_message', sessionId, message: msg, aiDraft: draft, name: session.name, site: session.site, lang: session.lang });
+  if (isOnline()) {
+    const draft = await generateDraft(session);
+    session.aiDraft = draft;
+    session.status = 'pending';
+    broadcastToAdmins({ type: 'customer_message', sessionId, message: msg, aiDraft: draft, name: session.name, site: session.site, lang: session.lang });
+  } else {
+    broadcastToAdmins({ type: 'customer_message', sessionId, message: msg, aiDraft: null, name: session.name, site: session.site, lang: session.lang });
+  }
 
   res.json({ ok: true });
 });
 
 app.get('/api/poll/:sessionId', (req, res) => {
   const session = sessions[req.params.sessionId];
-  if (!session) return res.json({ messages: [] });
+  if (!session) return res.json({ messages: [], online: isOnline() });
   const operatorMsgs = session.messages.filter(m => m.role === 'operator' && !m.delivered);
   operatorMsgs.forEach(m => m.delivered = true);
-  res.json({ messages: operatorMsgs });
+  res.json({ messages: operatorMsgs, online: isOnline() });
+});
+
+// Status endpoint pre widget
+app.get('/api/status', (req, res) => {
+  res.json({ online: isOnline(), status: onlineStatus });
 });
 
 // ── ADMIN API ─────────────────────────────────────────────────────────────────
@@ -194,6 +224,19 @@ function adminAuth(req, res, next) {
   else res.status(401).json({ error: 'Neautorizovaný' });
 }
 
+// Online status ovládanie
+app.get('/admin/status', adminAuth, (req, res) => {
+  res.json({ status: onlineStatus, online: isOnline() });
+});
+
+app.post('/admin/status', adminAuth, (req, res) => {
+  const { status } = req.body;
+  if (!['auto', 'online', 'offline'].includes(status)) return res.status(400).json({ error: 'Neplatný status' });
+  onlineStatus = status;
+  broadcastToAdmins({ type: 'status_changed', status, online: isOnline() });
+  res.json({ ok: true, status, online: isOnline() });
+});
+
 app.get('/admin/sessions', adminAuth, (req, res) => {
   const list = Object.values(sessions).sort((a, b) => b.lastActivity - a.lastActivity);
   res.json({ sessions: list });
@@ -203,15 +246,12 @@ app.post('/admin/reply', adminAuth, async (req, res) => {
   const { sessionId, textSK } = req.body;
   const session = sessions[sessionId];
   if (!session) return res.status(404).json({ error: 'Session not found' });
-
   const textTranslated = await translateText(textSK, session.lang);
-  
   const msg = { role: 'operator', text: textTranslated, textSK, timestamp: Date.now(), delivered: false };
   session.messages.push(msg);
   session.status = 'answered';
   session.aiDraft = null;
   saveConversation(session, 'assistant', textTranslated);
-
   broadcastToAdmins({ type: 'reply_sent', sessionId, textSK, textTranslated, lang: session.lang });
   res.json({ ok: true, textTranslated });
 });
@@ -295,7 +335,6 @@ app.get('/admin/stats', adminAuth, (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -307,7 +346,7 @@ wss.on('connection', (ws, req) => {
         const config = loadConfig();
         if (msg.token && Buffer.from(msg.token, 'base64').toString() === config.adminPassword) {
           adminClients.add(ws);
-          ws.send(JSON.stringify({ type: 'connected', sessions: Object.values(sessions) }));
+          ws.send(JSON.stringify({ type: 'connected', sessions: Object.values(sessions), status: onlineStatus, online: isOnline() }));
         }
       }
     } catch {}
@@ -317,5 +356,4 @@ wss.on('connection', (ws, req) => {
 
 server.listen(PORT, () => {
   console.log('David LiveChat bezi na porte: ' + PORT);
-  console.log('Admin ready');
 });
