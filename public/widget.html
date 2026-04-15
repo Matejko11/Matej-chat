@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<title>Test — David Chat</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f0f4ff;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.page{text-align:center;padding:40px 20px}
+h1{font-size:28px;color:#1a1a2e;margin-bottom:8px}
+p{color:#666;font-size:15px;margin-bottom:40px}
+#bubble{position:fixed;bottom:28px;right:28px;width:58px;height:58px;background:linear-gradient(135deg,#4f7cff,#7c5cff);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(79,124,255,.4);z-index:1000}
+#bubble svg{width:26px;height:26px;fill:white}
+#win{position:fixed;bottom:98px;right:28px;width:360px;height:540px;background:#fff;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.18);display:none;flex-direction:column;z-index:1000;overflow:hidden}
+#win.open{display:flex}
+.wh{background:linear-gradient(135deg,#4f7cff,#7c5cff);padding:16px 20px;display:flex;align-items:center;gap:12px}
+.wav{width:38px;height:38px;background:rgba(255,255,255,.25);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px}
+.whi h3{color:#fff;font-size:15px;font-weight:600}
+.whi p{color:rgba(255,255,255,.75);font-size:12px}
+.nf{padding:20px;display:flex;flex-direction:column;gap:10px}
+.nf h4{font-size:15px;color:#333;margin-bottom:4px}
+.nf input{border:1px solid #dde;border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:system-ui}
+.nf input:focus{border-color:#4f7cff}
+.nf button{background:linear-gradient(135deg,#4f7cff,#7c5cff);border:none;border-radius:10px;padding:11px;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+.msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f8f9ff}
+.msg{max-width:80%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.5}
+.msg.bot{background:#fff;border:1px solid #e8eaf6;align-self:flex-start;color:#333;border-bottom-left-radius:4px}
+.msg.user{background:linear-gradient(135deg,#4f7cff,#7c5cff);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.msg.typing{background:#fff;border:1px solid #e8eaf6;align-self:flex-start;color:#999;font-style:italic}
+.ir{padding:12px 14px;background:#fff;border-top:1px solid #eee;display:flex;gap:8px}
+.ir input{flex:1;border:1px solid #dde;border-radius:22px;padding:10px 16px;font-size:14px;outline:none;font-family:system-ui}
+.ir input:focus{border-color:#4f7cff}
+.ir button{width:40px;height:40px;background:linear-gradient(135deg,#4f7cff,#7c5cff);border:none;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ir button svg{width:18px;height:18px;fill:white}
+.rating-box{padding:16px;background:#f8f9ff;border-top:1px solid #eee;text-align:center}
+.rating-box p{font-size:13px;color:#666;margin-bottom:8px}
+.stars-row{display:flex;justify-content:center;gap:6px}
+.star{font-size:28px;cursor:pointer;color:#ddd;transition:color .1s}
+.star.on{color:#ffc04a}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>&#127939; bezeckepotreby.sk</h1>
+  <p>Testovacia str&aacute;nka — vysk&uacute;&scaron;aj chatbota David vpravo dole</p>
+</div>
+<div id="bubble" onclick="toggleChat()">
+  <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+</div>
+<div id="win">
+  <div class="wh">
+    <div class="wav">&#127939;</div>
+    <div class="whi"><h3>David</h3><p id="wsite">bezeckepotreby.sk &middot; online</p></div>
+  </div>
+  <div class="nf" id="nf">
+    <h4>Vitaj! Ako sa vol&aacute;&scaron;?</h4>
+    <input type="text" id="iname" placeholder="Tvoje meno..." onkeydown="if(event.key==='Enter')startChat()">
+    <input type="email" id="iemail" placeholder="Email (nepovinné)..." onkeydown="if(event.key==='Enter')startChat()">
+    <button onclick="startChat()">Za&#269;a&#357; chat &rarr;</button>
+  </div>
+  <div class="msgs" id="msgs" style="display:none"></div>
+  <div class="ir" id="ir" style="display:none">
+    <input type="text" id="ci" placeholder="Nap&iacute;&scaron; spr&aacute;vu..." onkeydown="if(event.key==='Enter')send()">
+    <button onclick="send()"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+  </div>
+  <div class="rating-box" id="rbox" style="display:none">
+    <p>Ako si spokojn&yacute; s touto konverz&aacute;ciou?</p>
+    <div class="stars-row" id="stars"></div>
+  </div>
+</div>
+<script>
+const BASE=window.location.origin;
+let SID=null,open=false,polling=null,rated=false;
+
+function toggleChat(){open=!open;document.getElementById('win').classList.toggle('open',open);}
+
+async function startChat(){
+  const name=document.getElementById('iname').value.trim()||'Zákazník';
+  const email=document.getElementById('iemail').value.trim();
+  const r=await fetch(BASE+'/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,sessionId:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)})});
+  const d=await r.json();
+  SID=d.sessionId;
+  document.getElementById('nf').style.display='none';
+  document.getElementById('msgs').style.display='flex';
+  document.getElementById('ir').style.display='flex';
+  addMsg('bot','Ahoj '+name+'! Som David. Ako ti môžem pomôcť?');
+  document.getElementById('ci').focus();
+  startPolling();
+  initRating();
+}
+
+function addMsg(role,text){
+  const el=document.createElement('div');
+  el.className='msg '+role;el.textContent=text;
+  const c=document.getElementById('msgs');c.appendChild(el);c.scrollTop=c.scrollHeight;
+  return el;
+}
+
+async function send(){
+  const ci=document.getElementById('ci');
+  const text=ci.value.trim();if(!text||!SID)return;
+  ci.value='';
+  addMsg('user',text);
+  const typing=addMsg('typing','Operator píše...');
+  try{
+    await fetch(BASE+'/api/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:SID,text})});
+    typing.remove();
+  } catch{typing.textContent='Chyba spojenia.';}
+}
+
+function startPolling(){
+  if(polling)clearInterval(polling);
+  polling=setInterval(async()=>{
+    if(!SID)return;
+    try{
+      const r=await fetch(BASE+'/api/poll/'+SID);
+      const d=await r.json();
+      (d.messages||[]).forEach(m=>addMsg('bot',m.text||''));
+    }catch{}
+  },2000);
+}
+
+function initRating(){
+  const box=document.getElementById('rbox');
+  const stars=document.getElementById('stars');
+  box.style.display='block';
+  stars.innerHTML=[1,2,3,4,5].map(i=>`<span class="star" onclick="rate(${i})" data-v="${i}">&#9733;</span>`).join('');
+}
+
+async function rate(val){
+  if(rated)return;rated=true;
+  document.querySelectorAll('.star').forEach(s=>s.classList.toggle('on',parseInt(s.dataset.v)<=val));
+  await fetch(BASE+'/api/rating',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:SID,rating:val})});
+  setTimeout(()=>document.getElementById('rbox').style.display='none',1500);
+}
+</script>
+</body>
+</html>
