@@ -83,51 +83,9 @@ if(!urlParams.get('lang')){
 }
 
 const T={
-  SK:{
-    vitaj:'Vitaj! Ako sa voláš?',
-    meno:'Tvoje meno...',
-    email:'Email (nepovinné)...',
-    btn:'Začať chat →',
-    ahoj:'Ahoj {name}! Som David. Ako ti môžem pomôcť?',
-    pise:'Operátor píše...',
-    napís:'Napíš správu...',
-    rating:'Ako si spokojný s touto konverzáciou?',
-    chyba:'Chyba spojenia.',
-    site:'bezeckepotreby.sk',
-    siteUrl:'https://bezeckepotreby.sk',
-    online:'bezeckepotreby.sk · online',
-    sub:'Testovacia stránka — vyskúšaj chatbota David vpravo dole'
-  },
-  CZ:{
-    vitaj:'Vítej! Jak se jmenuješ?',
-    meno:'Tvoje jméno...',
-    email:'Email (nepovinné)...',
-    btn:'Začít chat →',
-    ahoj:'Ahoj {name}! Jsem David. Jak ti mohu pomoci?',
-    pise:'Operátor píše...',
-    napís:'Napiš zprávu...',
-    rating:'Jak jsi spokojený s touto konverzací?',
-    chyba:'Chyba připojení.',
-    site:'runnie.cz',
-    siteUrl:'https://runnie.cz',
-    online:'runnie.cz · online',
-    sub:'Testovací stránka — vyzkoušej chatbota David vpravo dole'
-  },
-  HU:{
-    vitaj:'Üdvözlünk! Mi a neved?',
-    meno:'A neved...',
-    email:'Email (nem kötelező)...',
-    btn:'Chat indítása →',
-    ahoj:'Szia {name}! David vagyok. Miben segíthetek?',
-    pise:'Az operátor ír...',
-    napís:'Írj üzenetet...',
-    rating:'Mennyire voltál elégedett ezzel a beszélgetéssel?',
-    chyba:'Kapcsolódási hiba.',
-    site:'runnie.hu',
-    siteUrl:'https://runnie.hu',
-    online:'runnie.hu · online',
-    sub:'Tesztoldal — próbáld ki a David chatbotot jobbra lent'
-  }
+  SK:{vitaj:'Vitaj! Ako sa voláš?',meno:'Tvoje meno...',email:'Email (nepovinné)...',btn:'Začať chat →',ahoj:'Ahoj {name}! Som David. Ako ti môžem pomôcť?',pise:'Operátor píše...',napís:'Napíš správu...',rating:'Ako si spokojný s touto konverzáciou?',chyba:'Chyba spojenia.',site:'bezeckepotreby.sk',siteUrl:'https://bezeckepotreby.sk',online:'bezeckepotreby.sk · online',sub:'Testovacia stránka — vyskúšaj chatbota David vpravo dole'},
+  CZ:{vitaj:'Vítej! Jak se jmenuješ?',meno:'Tvoje jméno...',email:'Email (nepovinné)...',btn:'Začít chat →',ahoj:'Ahoj {name}! Jsem David. Jak ti mohu pomoci?',pise:'Operátor píše...',napís:'Napiš zprávu...',rating:'Jak jsi spokojený s touto konverzací?',chyba:'Chyba připojení.',site:'runnie.cz',siteUrl:'https://runnie.cz',online:'runnie.cz · online',sub:'Testovací stránka — vyzkoušej chatbota David vpravo dole'},
+  HU:{vitaj:'Üdvözlünk! Mi a neved?',meno:'A neved...',email:'Email (nem kötelező)...',btn:'Chat indítása →',ahoj:'Szia {name}! David vagyok. Miben segíthetek?',pise:'Az operátor ír...',napís:'Írj üzenetet...',rating:'Mennyire voltál elégedett ezzel a beszélgetéssel?',chyba:'Kapcsolódási hiba.',site:'runnie.hu',siteUrl:'https://runnie.hu',online:'runnie.hu · online',sub:'Tesztoldal — próbáld ki a David chatbotot jobbra lent'}
 };
 
 const tx=T[LANG];
@@ -147,7 +105,7 @@ function toggleChat(){open=!open;document.getElementById('win').classList.toggle
 async function startChat(){
   const name=document.getElementById('iname').value.trim()||'Zákazník';
   const email=document.getElementById('iemail').value.trim();
-  const r=await fetch(BASE+'/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,sessionId:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)})});
+  const r=await fetch(BASE+'/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,lang:LANG,sessionId:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)})});
   const d=await r.json();
   SID=d.sessionId;
   document.getElementById('nf').style.display='none';
