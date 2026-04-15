@@ -72,11 +72,15 @@ p{color:#666;font-size:15px;margin-bottom:40px}
 const BASE=window.location.origin;
 let SID=null,open=false,polling=null,rated=false;
 
-// Zistí jazyk podľa URL
 const host=window.location.hostname;
-let LANG='SK';
-if(host.includes('runnie.hu'))LANG='HU';
-else if(host.includes('runnie.cz'))LANG='CZ';
+const urlParams=new URLSearchParams(window.location.search);
+let LANG=urlParams.get('lang')||'SK';
+if(!['SK','CZ','HU'].includes(LANG))LANG='SK';
+if(!urlParams.get('lang')){
+  if(host.includes('runnie.hu'))LANG='HU';
+  else if(host.includes('runnie.cz'))LANG='CZ';
+  else LANG='SK';
+}
 
 const T={
   SK:{
@@ -91,7 +95,8 @@ const T={
     chyba:'Chyba spojenia.',
     site:'bezeckepotreby.sk',
     siteUrl:'https://bezeckepotreby.sk',
-    online:'bezeckepotreby.sk · online'
+    online:'bezeckepotreby.sk · online',
+    sub:'Testovacia stránka — vyskúšaj chatbota David vpravo dole'
   },
   CZ:{
     vitaj:'Vítej! Jak se jmenuješ?',
@@ -105,7 +110,8 @@ const T={
     chyba:'Chyba připojení.',
     site:'runnie.cz',
     siteUrl:'https://runnie.cz',
-    online:'runnie.cz · online'
+    online:'runnie.cz · online',
+    sub:'Testovací stránka — vyzkoušej chatbota David vpravo dole'
   },
   HU:{
     vitaj:'Üdvözlünk! Mi a neved?',
@@ -119,14 +125,15 @@ const T={
     chyba:'Kapcsolódási hiba.',
     site:'runnie.hu',
     siteUrl:'https://runnie.hu',
-    online:'runnie.hu · online'
+    online:'runnie.hu · online',
+    sub:'Tesztoldal — próbáld ki a David chatbotot jobbra lent'
   }
 };
 
 const tx=T[LANG];
 
-// Nastav texty podľa jazyka
 document.getElementById('site-title').textContent=tx.site;
+document.getElementById('site-sub').textContent=tx.sub;
 document.getElementById('wsite').textContent=tx.online;
 document.getElementById('txt-vitaj').textContent=tx.vitaj;
 document.getElementById('iname').placeholder=tx.meno;
@@ -134,15 +141,6 @@ document.getElementById('iemail').placeholder=tx.email;
 document.getElementById('txt-btn').textContent=tx.btn;
 document.getElementById('ci').placeholder=tx.napís;
 document.getElementById('txt-rating').textContent=tx.rating;
-
-// Nastav odkaz na správnu stránku
-const siteLink=document.querySelector('#site-title');
-if(siteLink){
-  const a=document.createElement('a');
-  a.href=tx.siteUrl;a.style.color='inherit';a.style.textDecoration='none';
-  a.textContent=siteLink.textContent;
-  siteLink.replaceWith(a);
-}
 
 function toggleChat(){open=!open;document.getElementById('win').classList.toggle('open',open);}
 
