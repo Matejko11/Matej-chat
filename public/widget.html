@@ -11,6 +11,9 @@ h1{font-size:28px;color:#3d3d3d;margin-bottom:8px}
 p{color:#666;font-size:15px;margin-bottom:40px}
 #bubble{position:fixed;bottom:28px;right:28px;width:58px;height:58px;background:linear-gradient(135deg,#ffdd00,#f0c800);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(255,221,0,.4);z-index:1000}
 #bubble svg{width:26px;height:26px;fill:#3d3d3d}
+.bdot{position:absolute;top:4px;right:4px;width:12px;height:12px;border-radius:50%;border:2px solid #fff}
+.bdot.on{background:#3dd68c}
+.bdot.off{background:#ff5c5c}
 #win{position:fixed;bottom:98px;right:28px;width:360px;height:540px;background:#fff;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.18);display:none;flex-direction:column;z-index:1000;overflow:hidden}
 #win.open{display:flex}
 .wh{background:linear-gradient(135deg,#ffdd00,#f0c800);padding:16px 20px;display:flex;align-items:center;gap:12px}
@@ -48,6 +51,7 @@ p{color:#666;font-size:15px;margin-bottom:40px}
 </div>
 <div id="bubble" onclick="toggleChat()">
   <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+  <div class="bdot off" id="bdot"></div>
 </div>
 <div id="win">
   <div class="wh">
@@ -72,7 +76,7 @@ p{color:#666;font-size:15px;margin-bottom:40px}
 </div>
 <script>
 const BASE=window.location.origin;
-let SID=null,open=false,polling=null,rated=false;
+let SID=null,open=false,polling=null,rated=false,ONLINE=false;
 
 const host=window.location.hostname;
 const urlParams=new URLSearchParams(window.location.search);
@@ -85,22 +89,32 @@ if(!urlParams.get('lang')){
 }
 
 const T={
-  SK:{vitaj:'Vitaj! Ako sa voláš?',meno:'Tvoje meno...',email:'Email (nepovinné)...',btn:'Začať chat →',ahoj:'Ahoj {name}! Som David. Ako ti môžem pomôcť?',pise:'Operátor píše...',napís:'Napíš správu...',rating:'Ako si spokojný s touto konverzáciou?',chyba:'Chyba spojenia.',site:'bezeckepotreby.sk',siteUrl:'https://bezeckepotreby.sk',online:'bezeckepotreby.sk · online',sub:'Testovacia stránka — vyskúšaj chatbota David vpravo dole'},
-  CZ:{vitaj:'Vítej! Jak se jmenuješ?',meno:'Tvoje jméno...',email:'Email (nepovinné)...',btn:'Začít chat →',ahoj:'Ahoj {name}! Jsem David. Jak ti mohu pomoci?',pise:'Operátor píše...',napís:'Napiš zprávu...',rating:'Jak jsi spokojený s touto konverzací?',chyba:'Chyba připojení.',site:'runnie.cz',siteUrl:'https://runnie.cz',online:'runnie.cz · online',sub:'Testovací stránka — vyzkoušej chatbota David vpravo dole'},
-  HU:{vitaj:'Üdvözlünk! Mi a neved?',meno:'A neved...',email:'Email (nem kötelező)...',btn:'Chat indítása →',ahoj:'Szia {name}! David vagyok. Miben segíthetek?',pise:'Az operátor ír...',napís:'Írj üzenetet...',rating:'Mennyire voltál elégedett ezzel a beszélgetéssel?',chyba:'Kapcsolódási hiba.',site:'runnie.hu',siteUrl:'https://runnie.hu',online:'runnie.hu · online',sub:'Tesztoldal — próbáld ki a David chatbotot jobbra lent'}
+  SK:{vitaj:'Vitaj! Ako sa voláš?',meno:'Tvoje meno...',email:'Email (nepovinné)...',btn:'Začať chat →',ahoj:'Ahoj {name}! Som David. Ako ti môžem pomôcť?',pise:'Operátor píše...',napís:'Napíš správu...',rating:'Ako si spokojný s touto konverzáciou?',chyba:'Chyba spojenia.',site:'bezeckepotreby.sk',siteUrl:'https://bezeckepotreby.sk',online:'bezeckepotreby.sk · online',offline:'bezeckepotreby.sk · offline',sub:'Testovacia stránka — vyskúšaj chatbota David vpravo dole'},
+  CZ:{vitaj:'Vítej! Jak se jmenuješ?',meno:'Tvoje jméno...',email:'Email (nepovinné)...',btn:'Začít chat →',ahoj:'Ahoj {name}! Jsem David. Jak ti mohu pomoci?',pise:'Operátor píše...',napís:'Napiš zprávu...',rating:'Jak jsi spokojený s touto konverzací?',chyba:'Chyba připojení.',site:'runnie.cz',siteUrl:'https://runnie.cz',online:'runnie.cz · online',offline:'runnie.cz · offline',sub:'Testovací stránka — vyzkoušej chatbota David vpravo dole'},
+  HU:{vitaj:'Üdvözlünk! Mi a neved?',meno:'A neved...',email:'Email (nem kötelező)...',btn:'Chat indítása →',ahoj:'Szia {name}! David vagyok. Miben segíthetek?',pise:'Az operátor ír...',napís:'Írj üzenetet...',rating:'Mennyire voltál elégedett ezzel a beszélgetéssel?',chyba:'Kapcsolódási hiba.',site:'runnie.hu',siteUrl:'https://runnie.hu',online:'runnie.hu · online',offline:'runnie.hu · offline',sub:'Tesztoldal — próbáld ki a David chatbotot jobbra lent'}
 };
 
 const tx=T[LANG];
 
 document.getElementById('site-title').textContent=tx.site;
 document.getElementById('site-sub').textContent=tx.sub;
-document.getElementById('wsite').textContent=tx.online;
 document.getElementById('txt-vitaj').textContent=tx.vitaj;
 document.getElementById('iname').placeholder=tx.meno;
 document.getElementById('iemail').placeholder=tx.email;
 document.getElementById('txt-btn').textContent=tx.btn;
 document.getElementById('ci').placeholder=tx.napís;
 document.getElementById('txt-rating').textContent=tx.rating;
+
+function setOnlineUI(online){
+  ONLINE=online;
+  const dot=document.getElementById('bdot');
+  const wsite=document.getElementById('wsite');
+  dot.className='bdot '+(online?'on':'off');
+  wsite.textContent=online?tx.online:tx.offline;
+}
+
+// Načítaj status
+fetch(BASE+'/api/status').then(r=>r.json()).then(d=>setOnlineUI(d.online)).catch(()=>setOnlineUI(false));
 
 function toggleChat(){open=!open;document.getElementById('win').classList.toggle('open',open);}
 
@@ -110,10 +124,11 @@ async function startChat(){
   const r=await fetch(BASE+'/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,lang:LANG,sessionId:'s_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)})});
   const d=await r.json();
   SID=d.sessionId;
+  setOnlineUI(d.online);
   document.getElementById('nf').style.display='none';
   document.getElementById('msgs').style.display='flex';
   document.getElementById('ir').style.display='flex';
-  addMsg('bot',tx.ahoj.replace('{name}',name));
+  if(d.online) addMsg('bot',tx.ahoj.replace('{name}',name));
   document.getElementById('ci').focus();
   startPolling();
   initRating();
@@ -122,13 +137,9 @@ async function startChat(){
 function addMsg(role,text){
   const el=document.createElement('div');
   el.className='msg '+role;
-  // Klikateľné linky + obrázky
   const isImg=/^https?:\/\/\S+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i;
   if(role==='bot'&&isImg.test(text.trim())){
-    const img=document.createElement('img');
-    img.src=text.trim();
-    img.alt='';
-    el.appendChild(img);
+    const img=document.createElement('img');img.src=text.trim();img.alt='';el.appendChild(img);
   } else {
     el.innerHTML=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/https?:\/\/[^\s<]+/g,url=>`<a href="${url}" target="_blank" style="color:inherit;text-decoration:underline;word-break:break-all;">${url}</a>`);
   }
@@ -155,6 +166,7 @@ function startPolling(){
     try{
       const r=await fetch(BASE+'/api/poll/'+SID);
       const d=await r.json();
+      setOnlineUI(d.online);
       (d.messages||[]).forEach(m=>addMsg('bot',m.text||''));
     }catch{}
   },2000);
